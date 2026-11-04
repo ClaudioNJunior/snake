@@ -3,7 +3,7 @@
 // Bump this version when changing files cached below. Updates activate after
 // existing app windows close, so a running game is never forcibly reloaded.
 const CACHE_PREFIX = 'snake-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const ROOT = new URL('./', self.location.href).href;
 const ASSETS = [
   'manifest.webmanifest',
