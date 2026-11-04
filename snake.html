@@ -221,20 +221,57 @@
     // No backing-buffer resizing during zoom or viewport changes.
     ctx.imageSmoothingEnabled = false; // Keep this disabled for any future drawImage().
 
+    function fitDisplayGrid(widthLimit, heightLimit) {
+      // Each original tile is made from repeating 6px blocks (24 / 4).
+      // Fit those blocks, not the outer frame, to whole physical screen pixels.
+      const blockSize = cellSize / 4;
+      const columns = canvas.width / blockSize;
+      const rows = canvas.height / blockSize;
+      const originalAspect = (504 - 8) / (338 - 8);
+      const maxX = Math.max(1, Math.floor(widthLimit / columns));
+      const maxY = Math.max(2, Math.floor(heightLimit / rows));
+      let best = null;
+
+      for (let x = 1; x <= maxX; x++) {
+        // Keep the intentionally taller pixels instead of forcing square ones.
+        for (let y = x + 1; y <= maxY; y++) {
+          const width = columns * x;
+          const height = rows * y;
+          const error = Math.abs(width / height / originalAspect - 1);
+          const area = width * height;
+          const close = error <= 0.02;
+          if (!best || (close && !best.close) ||
+              (close && best.close && area > best.area) ||
+              (!close && !best.close && (error < best.error - 1e-9 ||
+                (Math.abs(error - best.error) < 1e-9 && area > best.area)))) {
+            best = { width, height, error, area, close };
+          }
+        }
+      }
+      return best;
+    }
+
     function resizeCanvasDisplay() {
       const ratio = window.devicePixelRatio || 1;
       const availableWidth = Math.max(1, document.documentElement.clientWidth - 16);
       const content = document.getElementById('content');
       const otherHeight = content.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
       const availableHeight = Math.max(338 / ratio, window.innerHeight - otherHeight - 16);
-      // Preserve the original 504:338 CSS proportions, including stretched pixels.
-      // Prefer integer display steps; only shrink for a viewport smaller than 1x.
-      // Even then, the original bitmap is untouched and CSS stays pixelated.
       const fit = Math.min(availableWidth * ratio / 504, availableHeight * ratio / 338);
-      const scale = (fit < 1 ? fit : Math.min(4, Math.floor(fit))) / ratio;
-      canvas.style.width = `${504 * scale}px`;
-      canvas.style.height = `${338 * scale}px`;
-      canvas.style.borderWidth = `${4 * scale}px`;
+      const scale = fit < 1 ? fit : Math.min(4, Math.floor(fit));
+      const border = Math.max(1, Math.round(4 * scale));
+      const grid = fitDisplayGrid(504 * scale - 2 * border, 338 * scale - 2 * border);
+      canvas.style.width = `${(grid.width + 2 * border) / ratio}px`;
+      canvas.style.height = `${(grid.height + 2 * border) / ratio}px`;
+      canvas.style.borderWidth = `${border / ratio}px`;
+
+      // A centered element can land halfway through a screen pixel.
+      // Snap its origin too, without changing the game's backing buffer.
+      canvas.style.transform = 'none';
+      const rect = canvas.getBoundingClientRect();
+      const offsetX = (Math.round(rect.left * ratio) - rect.left * ratio) / ratio;
+      const offsetY = (Math.round(rect.top * ratio) - rect.top * ratio) / ratio;
+      canvas.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
     }
 
     window.addEventListener('resize', resizeCanvasDisplay);
