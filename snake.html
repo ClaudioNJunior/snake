@@ -65,7 +65,6 @@
       font-style: normal;
       cursor: none;
       user-select: none;
-      pointer-events: none;
     }
 
     body {
@@ -86,29 +85,69 @@
     }
 
     #canvas {
+      /* The bitmap stays 528 x 288. Only its CSS display size changes. */
+      box-sizing: border-box;
+      display: block;
       width: 504px;
       height: 338px;
+      margin: 0 auto;
       border: 4px dashed #674e0d;
-      max-width: calc(100vw - 10px);
+      image-rendering: pixelated;
+    }
+
+    html.is-playing, html.is-playing body {
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+
+    .game-title { margin: 0; font-size: 6rem; }
+
+    button {
+      font: inherit;
+      color: inherit;
+      line-height: inherit;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:focus-visible { outline: 2px dashed #674e0d; outline-offset: 4px; }
+    button:hover { background-color: #674e0d23; }
+
+    @media (max-width: 600px) {
+      body { font-size: 1.25rem; }
+      .game-title { font-size: clamp(3rem, 12vw, 6rem); }
+      #content > p { margin: 0.5rem 0; }
+      #difficulty-choices {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      #difficulty-choices br { display: none; }
+      #difficulty-choices button { min-height: 36px; }
+      #difficulty-choices button:last-of-type { grid-column: 1 / -1; }
+      .game-control { min-height: 44px; }
     }
 
     #pPontuacao {
       font-size: 1.7rem;
     }
 
-    span.predicted {
+    .difficulty-control.predicted {
       background-color: #674e0da3;
       color: #c0cc00;
       padding: 0 10px;
     }
 
-    span.selected {
+    .difficulty-control.selected {
       background-color: #674e0d;
       color: #c0cc00;
       padding: 0 10px;
     }
 
-    span.selected.predicted {
+    .difficulty-control.selected.predicted {
       background-color: #674e0d;
       color: #877c08;
       padding: 0 10px;
@@ -120,24 +159,24 @@
 
 <body>
   <div id="content">
-    <h1 style="margin: 0; font-size: 6rem;">SNAKE GAME</h1>
+    <h1 class="game-title">SNAKE GAME</h1>
     <h1 style="margin: 0;">Difficulty</h1>
-    <p style="margin-top: 0">
-      <span id="spnDif1">[1] Easy</span>
+    <p id="difficulty-choices" style="margin-top: 0">
+      <button type="button" id="spnDif1" class="difficulty-control" data-game-action="difficulty" data-difficulty="1">[1] Easy</button>
       <br />
-      <span id="spnDif2" class="selected">[2] Medium</span>
+      <button type="button" id="spnDif2" class="difficulty-control selected" data-game-action="difficulty" data-difficulty="2">[2] Medium</button>
       <br />
-      <span id="spnDif3">[3] Hard</span>
+      <button type="button" id="spnDif3" class="difficulty-control" data-game-action="difficulty" data-difficulty="3">[3] Hard</button>
       <br />
-      <span id="spnDif4">[4] Impossible</span>
+      <button type="button" id="spnDif4" class="difficulty-control" data-game-action="difficulty" data-difficulty="4">[4] Impossible</button>
       <br />
-      <span id="spnDif5">[5] GODMODE</span>
+      <button type="button" id="spnDif5" class="difficulty-control" data-game-action="difficulty" data-difficulty="5">[5] GODMODE</button>
     </p>
-    <canvas id="canvas" width="504" height="338"></canvas>
+    <canvas id="canvas" width="528" height="288" aria-label="Snake game board"></canvas>
     <p id="pPontuacao">0/0</p>
     <p id="pTime">00:00</p>
-    <p>Press [R] to Restart or Try Again</p>
-    <p>Press [Space] or [P] to Pause</p>
+    <p><button type="button" class="game-control" data-game-action="restart">Press [R] to Restart or Try Again</button></p>
+    <p><button type="button" id="pause-control" class="game-control" data-game-action="pause" aria-pressed="false">Press [Space] or [P] to Pause</button></p>
   </div>
 
   <script>
@@ -157,7 +196,7 @@
     let collisionCount = 0;
     let perdeu = false;
     let venceu = false;
-    let restart = false;
+    let moveTimer = null;
     let moving = false;
     let paused = false;
 
@@ -179,18 +218,39 @@
     let alreadyCommanded = false;
     let nextCommand = "";
 
-    canvas.width = cols * cellSize;
-    canvas.height = rows * cellSize;
+    // No backing-buffer resizing during zoom or viewport changes.
+    ctx.imageSmoothingEnabled = false; // Keep this disabled for any future drawImage().
+
+    function resizeCanvasDisplay() {
+      const ratio = window.devicePixelRatio || 1;
+      const availableWidth = Math.max(1, document.documentElement.clientWidth - 16);
+      const content = document.getElementById('content');
+      const otherHeight = content.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
+      const availableHeight = Math.max(338 / ratio, window.innerHeight - otherHeight - 16);
+      // Preserve the original 504:338 CSS proportions, including stretched pixels.
+      // Prefer integer display steps; only shrink for a viewport smaller than 1x.
+      // Even then, the original bitmap is untouched and CSS stays pixelated.
+      const fit = Math.min(availableWidth * ratio / 504, availableHeight * ratio / 338);
+      const scale = (fit < 1 ? fit : Math.min(4, Math.floor(fit))) / ratio;
+      canvas.style.width = `${504 * scale}px`;
+      canvas.style.height = `${338 * scale}px`;
+      canvas.style.borderWidth = `${4 * scale}px`;
+    }
+
+    window.addEventListener('resize', resizeCanvasDisplay);
+    window.visualViewport?.addEventListener('resize', resizeCanvasDisplay);
 
     let minLength = getDefaultSnake().length;
     let maxScore = cols * rows - minLength;
 
-    function startGame() {
+    function startGame(firstDirection) {
+      stopMoving();
+      stopCounting();
+      moving = false;
       snake = getDefaultSnake();
       fruit = generateFruit();
       perdeu = false;
       venceu = false;
-      restart = false;
       paused = false;
       dir = "right";
       collisionCount = 0;
@@ -208,63 +268,177 @@
       document.getElementById("pTime").textContent = "00:00";
 
       time = 0;
+      if (firstDirection) processCommand(firstDirection);
 
       startMoving();
       startCounting();
     }
 
-    document.addEventListener('keydown', (e) => {
-      if (alreadyCommanded) {
-        nextCommand = e.key;
-        return;
+    function isPlaying() {
+      return moving && !paused && !perdeu && !venceu;
+    }
+
+    function syncControls() {
+      document.documentElement.classList.toggle('is-playing', isPlaying());
+      const pauseButton = document.getElementById('pause-control');
+      pauseButton.textContent = `Press [Space] or [P] to ${paused ? 'Resume' : 'Pause'}`;
+      pauseButton.setAttribute('aria-pressed', String(paused));
+    }
+
+    function stopMoving() {
+      if (moveTimer !== null) {
+        clearTimeout(moveTimer);
+        moveTimer = null;
       }
+    }
 
-      alreadyCommanded = true;
-      processCommand(e.key);
-    });
-
-    document.addEventListener('keydown', (e) => {
-      let key = e.key;
-      if (key == 'R' || key == 'r') {
-        restart = true;
-        if (perdeu || paused) {
-          startGame();
-        }
-      }
-    });
-
-    document.addEventListener('keydown', (e) => {
-      let key = e.key;
-      if (!moving) {
+    function togglePause() {
+      if (perdeu || venceu) return;
+      paused = !paused;
+      alreadyCommanded = false;
+      nextCommand = '';
+      if (paused) {
+        stopMoving();
+        stopCounting();
+        drawGrid();
+        drawSnake();
+        drawFruit();
+        drawPaused();
+        syncControls();
+      } else {
         startMoving();
         startCounting();
       }
-    });
+    }
 
-    document.addEventListener('keydown', (e) => {
-      let key = e.key;
-      if (key == 'P' || key == 'p' || key == ' ') {
-        if (!perdeu) {
-          paused = !paused;
-          if (!paused) {
-            startMoving();
-            startCounting();
-          }
-        }
+    function selectDifficulty(value) {
+      nextDif = Number(value);
+      document.querySelectorAll('.predicted').forEach(el => el.classList.remove('predicted'));
+      document.getElementById(`spnDif${nextDif}`).classList.add('predicted');
+    }
+
+    function sendDirection(key) {
+      if (paused || perdeu || venceu) return;
+      if (!moving) {
+        startGame(key);
+      } else if (alreadyCommanded) {
+        nextCommand = key;
+      } else {
+        alreadyCommanded = true;
+        processCommand(key);
+      }
+    }
+
+    function runControl(button) {
+      switch (button.dataset.gameAction) {
+        case 'restart': startGame(); break;
+        case 'pause': togglePause(); break;
+        case 'difficulty': selectDifficulty(button.dataset.difficulty); break;
+      }
+    }
+
+    const directionKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 'a', 'A', 's', 'S', 'd', 'D']);
+    const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown', 'Home', 'End']);
+    document.addEventListener('keydown', e => {
+      const button = e.target.closest?.('button');
+      // Let native button activation handle Enter/Space once, without also pausing.
+      if (button && (e.key === 'Enter' || e.key === ' ')) {
+        if (e.repeat) e.preventDefault();
+        return;
+      }
+      if (isPlaying() && scrollKeys.has(e.key)) e.preventDefault();
+      if (directionKeys.has(e.key)) {
+        if (!paused && !perdeu && !venceu) e.preventDefault();
+        sendDirection(e.key);
+      } else if (/^[rRpP ]$/.test(e.key)) {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (e.key.toLowerCase() === 'r') startGame();
+        else togglePause();
+      } else if (/^[1-5]$/.test(e.key)) {
+        selectDifficulty(e.key);
+      } else if (!moving && !paused && !perdeu && !venceu && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+        startGame();
       }
     });
 
-    document.addEventListener('keydown', (e) => {
-      let key = e.key;
-      if (key == '1' || key == '2' || key == '3' || key == '4' || key == '5') {
-        nextDif = parseInt(key);
+    document.addEventListener('wheel', e => {
+      if (isPlaying()) e.preventDefault();
+    }, { passive: false });
 
-        document.querySelectorAll('.predicted').forEach(el => {
-          el.classList.remove('predicted');
-        });
-        document.getElementById(`spnDif${key}`).classList.add('predicted');
+    // Pointer tracking suppresses clicks from a mouse/pen drag, not just touch.
+    const tapSlop = 10;
+    const swipeDistance = 24;
+    let pointerStart = null;
+    let suppressPointerClick = false;
+    document.addEventListener('pointerdown', e => {
+      suppressPointerClick = false;
+      pointerStart = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    }, true);
+    function trackPointer(e) {
+      if (pointerStart?.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - pointerStart.x, e.clientY - pointerStart.y) > tapSlop) suppressPointerClick = true;
+    }
+    document.addEventListener('pointermove', trackPointer, true);
+    document.addEventListener('pointerup', e => {
+      trackPointer(e);
+      pointerStart = null;
+    }, true);
+    document.addEventListener('pointercancel', () => { pointerStart = null; suppressPointerClick = true; }, true);
+    document.addEventListener('click', e => {
+      if (suppressPointerClick && e.detail !== 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
       }
+      const button = e.target.closest?.('[data-game-action]');
+      if (button) runControl(button);
     });
+
+    // Touch Events allow whole-page swipes and explicit non-passive scroll control.
+    let gesture = null;
+    document.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) {
+        gesture = null;
+        if (isPlaying()) e.preventDefault();
+        return;
+      }
+      const touch = e.touches[0];
+      gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, originX: touch.clientX, originY: touch.clientY, dragged: false, button: e.target.closest?.('[data-game-action]') };
+      if (isPlaying()) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchmove', e => {
+      // Cancel the first move too, so an initial swipe can start the game
+      // before the browser claims the gesture for scrolling.
+      if (isPlaying() || (gesture && !moving && !paused && !perdeu && !venceu)) e.preventDefault();
+      if (!gesture || e.touches.length !== 1) return;
+      const touch = [...e.touches].find(t => t.identifier === gesture.id);
+      if (!touch) return;
+      if (Math.hypot(touch.clientX - gesture.originX, touch.clientY - gesture.originY) > tapSlop) gesture.dragged = true;
+      if (paused || perdeu || venceu) return;
+      const dx = touch.clientX - gesture.x;
+      const dy = touch.clientY - gesture.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < swipeDistance) return;
+      e.preventDefault();
+      sendDirection(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'ArrowRight' : 'ArrowLeft') : (dy > 0 ? 'ArrowDown' : 'ArrowUp'));
+      gesture.x = touch.clientX;
+      gesture.y = touch.clientY;
+    }, { passive: false });
+    document.addEventListener('touchend', e => {
+      if (!gesture) return;
+      const touch = [...e.changedTouches].find(t => t.identifier === gesture.id);
+      if (!touch) return;
+      const finished = gesture;
+      gesture = null;
+      const dragged = finished.dragged || Math.hypot(touch.clientX - finished.originX, touch.clientY - finished.originY) > tapSlop;
+      if (dragged || finished.button || isPlaying()) {
+        e.preventDefault();
+        suppressPointerClick = true;
+      }
+      if (!dragged && finished.button) runControl(finished.button);
+    }, { passive: false });
+    document.addEventListener('touchcancel', () => { gesture = null; suppressPointerClick = true; });
+
 
     function drawGrid() {
       ctx.fillStyle = '#c0cc00';
@@ -982,7 +1156,7 @@
       ctx.fillStyle = '#c0cc00b3';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      drawCenteredText('Press any key to start', 35);
+      drawCenteredText('Press any key or swipe to start', 28);
     }
 
     function isFontLoaded(fontSpec) {
@@ -1049,22 +1223,23 @@
     }
 
     function startMoving() {
-      if (paused) {
-        drawPaused();
+      stopMoving();
+      if (paused || perdeu || venceu) {
+        syncControls();
         return;
       }
 
-      if (perdeu)
-        return;
-
       moving = true;
+      syncControls();
       moveSnake();
 
       drawGrid();
       drawSnake();
 
-      if (venceu)
-      {
+      if (venceu) {
+        moving = false;
+        stopCounting();
+        syncControls();
         drawWin();
         return;
       }
@@ -1075,15 +1250,11 @@
 
       showPoints();
 
-      if (restart) {
-        moving = false;
-        startGame();
-        return;
-      }
-
       if (collisionCount >= Math.ceil(3*intervalDif[1] / intervalDif[dif - 1])) {
         moving = false;
         perdeu = true;
+        stopCounting();
+        syncControls();
 
         const maxScore = localStorage.getItem("maxScore");
         if (maxScore < snake.length - minLength)
@@ -1091,7 +1262,10 @@
         drawGameOver();
         return;
       }
-      setTimeout(startMoving, interval);
+      moveTimer = setTimeout(() => {
+        moveTimer = null;
+        startMoving();
+      }, interval);
     }
 
     async function ensureFontLoaded() {
@@ -1105,8 +1279,12 @@
       } catch (e) {
         console.warn('Fonte não carregou', e);
       }
-      drawFirstFrame();
+      if (!moving && !paused && !perdeu && !venceu) drawFirstFrame();
+      resizeCanvasDisplay();
     });
+
+    syncControls();
+    resizeCanvasDisplay();
 
     window.addEventListener('contextmenu', e => e.preventDefault());
   </script>
