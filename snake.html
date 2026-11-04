@@ -84,6 +84,31 @@
       max-width: 100vw;
     }
 
+    #canvas-frame {
+      --frame-width: 4px;
+      position: relative;
+      width: max-content;
+      margin: 0 auto;
+    }
+
+    #canvas-frame::after {
+      /* Paint all four edges above the bitmap, independently of native dashed
+         canvas borders (which can lose vertical edges on mobile WebKit). */
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image:
+        repeating-linear-gradient(to right, #674e0d 0 calc(var(--frame-width) * 3), transparent calc(var(--frame-width) * 3) calc(var(--frame-width) * 6)),
+        repeating-linear-gradient(to right, #674e0d 0 calc(var(--frame-width) * 3), transparent calc(var(--frame-width) * 3) calc(var(--frame-width) * 6)),
+        repeating-linear-gradient(to bottom, #674e0d 0 calc(var(--frame-width) * 3), transparent calc(var(--frame-width) * 3) calc(var(--frame-width) * 6)),
+        repeating-linear-gradient(to bottom, #674e0d 0 calc(var(--frame-width) * 3), transparent calc(var(--frame-width) * 3) calc(var(--frame-width) * 6));
+      background-size: 100% var(--frame-width), 100% var(--frame-width), var(--frame-width) 100%, var(--frame-width) 100%;
+      background-position: left top, left bottom, left top, right top;
+      background-repeat: no-repeat;
+    }
+
     #canvas {
       /* The bitmap stays 528 x 288. Only its CSS display size changes. */
       box-sizing: border-box;
@@ -91,7 +116,8 @@
       width: 504px;
       height: 338px;
       margin: 0 auto;
-      border: 4px dashed #674e0d;
+      /* Reserve exactly the same space; the overlay paints the visible frame. */
+      border: 4px solid transparent;
       image-rendering: pixelated;
     }
 
@@ -172,7 +198,9 @@
       <br />
       <button type="button" id="spnDif5" class="difficulty-control" data-game-action="difficulty" data-difficulty="5">[5] GODMODE</button>
     </p>
-    <canvas id="canvas" width="528" height="288" aria-label="Snake game board"></canvas>
+    <div id="canvas-frame">
+      <canvas id="canvas" width="528" height="288" aria-label="Snake game board"></canvas>
+    </div>
     <p id="pPontuacao">0/0</p>
     <p id="pTime">00:00</p>
     <p><button type="button" class="game-control" data-game-action="restart">Press [R] to Restart or Try Again</button></p>
@@ -264,14 +292,15 @@
       canvas.style.width = `${(grid.width + 2 * border) / ratio}px`;
       canvas.style.height = `${(grid.height + 2 * border) / ratio}px`;
       canvas.style.borderWidth = `${border / ratio}px`;
+      const frame = document.getElementById('canvas-frame');
+      frame.style.setProperty('--frame-width', `${border / ratio}px`);
 
-      // A centered element can land halfway through a screen pixel.
-      // Snap its origin too, without changing the game's backing buffer.
-      canvas.style.transform = 'none';
-      const rect = canvas.getBoundingClientRect();
+      // Align the frame and its canvas together, including after rotation.
+      frame.style.transform = 'none';
+      const rect = frame.getBoundingClientRect();
       const offsetX = (Math.round(rect.left * ratio) - rect.left * ratio) / ratio;
       const offsetY = (Math.round(rect.top * ratio) - rect.top * ratio) / ratio;
-      canvas.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+      frame.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
     }
 
     window.addEventListener('resize', resizeCanvasDisplay);
