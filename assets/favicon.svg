@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Snake</title>
+  <rect x="2" y="8" width="60" height="48" rx="8" fill="#c0cc00" stroke="#674e0d" stroke-width="4"/>
+  <path d="M14 40h14V26h16" fill="none" stroke="#674e0d" stroke-width="8"/>
+  <path d="M40 20h12v12H40zM44 40h6v6h-6z" fill="#674e0d"/>
+  <path d="M48 23h2v2h-2z" fill="#c0cc00"/>
+</svg>
