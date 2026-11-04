@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snake</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bytesized&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: "Bytesized", sans-serif;
+      font-weight: 400;
+      font-style: normal;
+      cursor: none;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    body {
+      font-size: 1.5rem;
+      background-color: #c0cc00;
+      color: #674e0d;
+      text-align: center;
+
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    #content{
+      max-width: 100vw;
+    }
+
+    #canvas {
+      width: 504px;
+      height: 338px;
+      border: 4px dashed #674e0d;
+      max-width: calc(100vw - 10px);
+    }
+
+    #pPontuacao {
+      font-size: 1.7rem;
+    }
+
+    span.predicted {
+      background-color: #674e0da3;
+      color: #c0cc00;
+      padding: 0 10px;
+    }
+
+    span.selected {
+      background-color: #674e0d;
+      color: #c0cc00;
+      padding: 0 10px;
+    }
+
+    span.selected.predicted {
+      background-color: #674e0d;
+      color: #877c08;
+      padding: 0 10px;
+    }
+  </style>
+
+
+</head>
+
+<body>
+  <div id="content">
+    <h1 style="margin: 0; font-size: 6rem;">SNAKE GAME</h1>
+    <h1 style="margin: 0;">Difficulty</h1>
+    <p style="margin-top: 0">
+      <span id="spnDif1">[1] Easy</span>
+      <br />
+      <span id="spnDif2" class="selected">[2] Medium</span>
+      <br />
+      <span id="spnDif3">[3] Hard</span>
+      <br />
+      <span id="spnDif4">[4] Impossible</span>
+      <br />
+      <span id="spnDif5">[5] GODMODE</span>
+    </p>
+    <canvas id="canvas" width="504" height="338"></canvas>
+    <p id="pPontuacao">0/0</p>
+    <p id="pTime">00:00</p>
+    <p>Press [R] to Restart or Try Again</p>
+    <p>Press [Space] or [P] to Pause</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const cols = 22;
+    const rows = 12;
+    const cellSize = 24;
+
+    let intervalDif = [215, 115, 80, 50, 30];
+    let dif = 2;
+    let interval = intervalDif[dif - 1];
+    let nextDif = 2;
+    let time = 0;
+
+    let collisionCount = 0;
+    let perdeu = false;
+    let venceu = false;
+    let restart = false;
+    let moving = false;
+    let paused = false;
+
+    let dir = 'right';
+
+    function getDefaultSnake() {
+      var defSnake = [];
+
+      for (var i = 8; i >= 0; i--) {
+        defSnake.push({ x: i, y: 10 });
+      }
+
+      return defSnake;
+    }
+
+    let snake = getDefaultSnake();
+
+    let fruit = generateFruit();
+    let alreadyCommanded = false;
+    let nextCommand = "";
+
+    canvas.width = cols * cellSize;
+    canvas.height = rows * cellSize;
+
+    let minLength = getDefaultSnake().length;
+    let maxScore = cols * rows - minLength;
+
+    function startGame() {
+      snake = getDefaultSnake();
+      fruit = generateFruit();
+      perdeu = false;
+      venceu = false;
+      restart = false;
+      paused = false;
+      dir = "right";
+      collisionCount = 0;
+      alreadyCommanded = false;
+      nextCommand = "";
+
+      document.getElementById(`spnDif${dif}`).classList.remove('selected');
+      dif = nextDif;
+      interval = intervalDif[dif - 1];
+      document.querySelectorAll('.predicted').forEach(el => {
+        el.classList.remove('predicted');
+      });
+      document.getElementById(`spnDif${dif}`).classList.add('selected');
+
+      document.getElementById("pTime").textContent = "00:00";
+
+      time = 0;
+
+      startMoving();
+      startCounting();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (alreadyCommanded) {
+        nextCommand = e.key;
+        return;
+      }
+
+      alreadyCommanded = true;
+      processCommand(e.key);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      let key = e.key;
+      if (key == 'R' || key == 'r') {
+        restart = true;
+        if (perdeu || paused) {
+          startGame();
+        }
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      let key = e.key;
+      if (!moving) {
+        startMoving();
+        startCounting();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      let key = e.key;
+      if (key == 'P' || key == 'p' || key == ' ') {
+        if (!perdeu) {
+          paused = !paused;
+          if (!paused) {
+            startMoving();
+            startCounting();
+          }
+        }
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      let key = e.key;
+      if (key == '1' || key == '2' || key == '3' || key == '4' || key == '5') {
+        nextDif = parseInt(key);
+
+        document.querySelectorAll('.predicted').forEach(el => {
+          el.classList.remove('predicted');
+        });
+        document.getElementById(`spnDif${key}`).classList.add('predicted');
+      }
+    });
+
+    function drawGrid() {
+      ctx.fillStyle = '#c0cc00';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (var i = 0; i < cols; i++) {
+        for (var j = 0; j < rows; j++) {
+          generateFullTile(i, j);
+        }
+      }
+    }
+
+    function drawSnake() {
+      // Tipos de partes:
+      // Curvas:
+      // - Bottom right
+      // - Bottom left
+      // - Top right
+      // - Top left
+      // Meios:
+      // - Vertical
+      // - Horizontal
+      // Final:
+      // - Top
+      // - Right
+      // - Bottom
+      // - Left
+
+      for (var i = 0; i < snake.length; i++) {
+        const col = snake[i].x;
+        const row = snake[i].y;
+
+        let top = false, right = false, bottom = false, left = false;
+
+        if (i == 0 || i == snake.length - 1) {
+          // Final
+          let opcao = "";
+          if (0 == snake.length - 1) {
+            opcao = dir;
+          }
+          else if (i == 0) {
+            if (snake[i].x > snake[i + 1].x) {
+              opcao = "right";
+              left = true;
+            }
+            else if (snake[i].x < snake[i + 1].x) {
+              opcao = "left";
+              right = true;
+            }
+            else if (snake[i].y > snake[i + 1].y) {
+              opcao = "bottom";
+              top = true;
+            }
+            else if (snake[i].y < snake[i + 1].y) {
+              opcao = "top";
+              bottom = true;
+            }
+          }
+          else {
+            if (snake[i].x > snake[i - 1].x) {
+              opcao = "right";
+              left = true;
+            }
+            else if (snake[i].x < snake[i - 1].x) {
+              opcao = "left";
+              right = true;
+            }
+            else if (snake[i].y > snake[i - 1].y) {
+              opcao = "bottom";
+              top = true;
+            }
+            else if (snake[i].y < snake[i - 1].y) {
+              opcao = "top";
+              bottom = true;
+            }
+          }
+        }
+        else if (i > 0 && i < snake.length - 1) {
+          // Meio ou curva
+          if (snake[i - 1].x == snake[i + 1].x) {
+            // Meio (vertical)
+            top = true;
+            bottom = true;
+          }
+          else if (snake[i - 1].y == snake[i + 1].y) {
+            // Meio (horizontal)
+            right = true;
+            left = true;
+          }
+          else {
+            // Curva
+
+            if (snake[i - 1].x > snake[i + 1].x && snake[i - 1].y > snake[i + 1].y) {
+              if (snake[i - 1].x === snake[i].x) {
+                bottom = true;
+                left = true;
+              } else {
+                top = true;
+                right = true;
+              }
+            } else if (snake[i - 1].x > snake[i + 1].x && snake[i - 1].y < snake[i + 1].y) {
+              if (snake[i - 1].x === snake[i].x) {
+                top = true;
+                left = true;
+              } else {
+                bottom = true;
+                right = true;
+              }
+            } else if (snake[i - 1].x < snake[i + 1].x && snake[i - 1].y > snake[i + 1].y) {
+              if (snake[i - 1].x === snake[i].x) {
+                bottom = true;
+                right = true;
+              } else {
+                top = true;
+                left = true;
+              }
+            } else if (snake[i - 1].x < snake[i + 1].x && snake[i - 1].y < snake[i + 1].y) {
+              if (snake[i - 1].x === snake[i].x) {
+                top = true;
+                right = true;
+              } else {
+                bottom = true;
+                left = true;
+              }
+            }
+          }
+        }
+
+        generateCommonPart(col, row);
+        if (top) generateTopPart(col, row);
+        if (bottom) generateBottomPart(col, row);
+        if (right) generateRightPart(col, row);
+        if (left) generateLeftPart(col, row);
+      }
+    }
+
+    function generateFullTile(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+      ctx.fillStyle = '#674e0d23';
+
+      // canto superior esquerdo
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize,
+        partSize / 2 - margin,
+        partSize / 2 - margin
+      );
+      // topo meio 1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // topo meio 2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // topo meio 3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // canto superior direito
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize,
+        partSize / 2 - margin,
+        partSize / 2 - margin
+      );
+
+      // esquerda meio 1
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      // centro C1R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C2R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C3R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // direita meio 1
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+
+      // esquerda meio 2
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      // centro C1R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C2R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C3R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // direita meio 2
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+
+      // esquerda meio 3
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      // centro C1R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C2R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // centro C3R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // direita meio 3
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+
+      // canto inferior esquerdo
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize / 2 - margin,
+        partSize / 2 - margin
+      );
+      // baixo meio 1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // baixo meio 2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // baixo meio 3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      // canto inferior direito
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize / 2 - margin,
+        partSize / 2 - margin
+      );
+    }
+
+    function generateTopPart(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+    }
+
+    function generateRightPart(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      ctx.fillRect(
+        col * cellSize + partSize * 3.5 + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+    }
+
+    function generateLeftPart(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+      ctx.fillRect(
+        col * cellSize,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize / 2 - margin,
+        partSize - margin * 2
+      );
+    }
+
+    function generateBottomPart(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize * 3.5 + margin,
+        partSize - margin * 2,
+        partSize / 2 - margin
+      );
+    }
+
+    function generateCommonPart(col, row) {
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+      // C1R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C2R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C3R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C1R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C2R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C3R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C1R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C2R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C3R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+    }
+
+    function drawFruit() {
+      const col = fruit.x;
+      const row = fruit.y;
+
+      let margin = 1;
+      let partSize = cellSize / 4;
+
+      ctx.fillStyle = '#674e0d';
+      // C2R1
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C1R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C3R2
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+      // C2R3
+      ctx.fillRect(
+        col * cellSize + partSize / 2 + partSize + margin,
+        row * cellSize + partSize / 2 + partSize + partSize + margin,
+        partSize - margin * 2,
+        partSize - margin * 2
+      );
+    }
+
+    function processCommand(key) {
+      switch (key) {
+        case 'ArrowUp':
+        case 'w':
+        case 'W':
+          if (dir != 'bottom') dir = 'top';
+          break;
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          if (dir != 'left') dir = 'right';
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          if (dir != 'right') dir = 'left';
+          break;
+        case 'ArrowDown':
+        case 's':
+        case 'S':
+          if (dir != 'top') dir = 'bottom';
+          break;
+      }
+    }
+
+    function generateFruit() {
+      let blocked = true;
+
+      if (snake.length == cols * rows) {
+        venceu = true;
+        return;
+      }
+      while (blocked) {
+        var newFruit = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
+        blocked = false;
+        for (var i = 0; i < snake.length; i++) {
+          if (newFruit.x == snake[i].x && newFruit.y == snake[i].y) {
+            blocked = true;
+          }
+        }
+      }
+
+      return newFruit;
+    }
+
+    function moveSnake() {
+      if (nextCommand != "" && alreadyCommanded == false) {
+        processCommand(nextCommand);
+        nextCommand = "";
+      }
+
+      let startingHeadPos = { x: snake[0].x, y: snake[0].y };
+      let lastPart = { y: snake[snake.length - 1].y, x: snake[snake.length - 1].x }
+
+      switch (dir.toLowerCase()) {
+        case 'top':
+          snake[0].y = snake[0].y - 1;
+          break;
+        case 'right':
+          snake[0].x = snake[0].x + 1;
+          break;
+        case 'bottom':
+          snake[0].y = snake[0].y + 1;
+          break;
+        case 'left':
+          snake[0].x = snake[0].x - 1;
+          break;
+      }
+
+      let headPos = { x: snake[0].x, y: snake[0].y }
+
+      checkPreventCollision(headPos, startingHeadPos);
+
+      var moved = startingHeadPos.x != snake[0].x || startingHeadPos.y != snake[0].y
+
+      if (snake.length > 1 && moved) {
+        let posAnterior = { x: startingHeadPos.x, y: startingHeadPos.y }
+        for (var i = 0; i < snake.length; i++) {
+          var pos = i + 1;
+
+          if (pos == snake.length) {
+            continue;
+          }
+
+          let posTemp = { x: snake[pos].x, y: snake[pos].y };
+
+          snake[pos].x = posAnterior.x;
+          snake[pos].y = posAnterior.y;
+
+          posAnterior = posTemp;
+        }
+      }
+
+      checkEatFruit(lastPart);
+    }
+
+    function checkEatFruit(lastPart) {
+      if (snake[0].y == fruit.y && snake[0].x == fruit.x) {
+        snake.push(lastPart);
+        fruit = generateFruit();
+      }
+    }
+
+    function checkPreventCollision(headPos, startingHeadPos) {
+      let bateu = false;
+
+      if (headPos.x < 0) {
+        snake[0].x = 0;
+        bateu = true;
+      }
+
+      if (headPos.x > cols - 1) {
+        snake[0].x = cols - 1;
+        bateu = true;
+      }
+
+      if (headPos.y < 0) {
+        snake[0].y = 0;
+        bateu = true;
+      }
+
+      if (headPos.y > rows - 1) {
+        snake[0].y = rows - 1;
+        bateu = true;
+      }
+
+      if (snake.length > 1) {
+        for (var i = 1; i < snake.length - 1; i++) {
+          if (headPos.x == snake[i].x && headPos.y == snake[i].y) {
+            snake[0].x = startingHeadPos.x;
+            snake[0].y = startingHeadPos.y;
+            bateu = true;
+          }
+        }
+      }
+
+      if (bateu)
+        collisionCount++;
+      else
+        collisionCount = 0;
+    }
+
+    function drawCenteredText(text, size = 54) {
+      ctx.font = `${size}px Bytesized`;
+      ctx.fillStyle = '#674e0d';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillText(
+        text,
+        canvas.width / 2,
+        canvas.height / 2
+      );
+    }
+
+    function drawCenteredBottomText(text) {
+      ctx.font = '30px Bytesized';
+      ctx.fillStyle = '#674e0d'; 
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle'; 
+
+      ctx.fillText(
+        text,
+        canvas.width / 2,
+        canvas.height / 1.5 
+      );
+    }
+
+    function showPoints() {
+      let points = snake.length - minLength;
+      document.getElementById("pPontuacao").textContent = `${points}/${maxScore}`;
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = '#c0cc00b3';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawCenteredText('GAME OVER');
+      drawCenteredBottomText(`Best Score: ${localStorage.getItem("maxScore")}`);
+    }
+
+    function drawStartScreen() {
+      ctx.fillStyle = '#c0cc00b3';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawCenteredText('Press any key to start', 35);
+    }
+
+    function isFontLoaded(fontSpec) {
+      return document.fonts.check(fontSpec);
+    }
+
+    function drawPaused() {
+      ctx.fillStyle = '#c0cc00b3';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawCenteredText('PAUSED');
+    }
+
+    function drawWin() {
+      ctx.fillStyle = '#c0cc00b3';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawCenteredText('YOU WIN');
+    }
+
+    let countTimer = null;
+
+    function startCounting() {
+      if (countTimer !== null) return;
+
+      const intervalMs = 100;
+
+      function loop() {
+        if (paused || !moving) {
+          clearTimeout(countTimer);
+          countTimer = null;
+          return;
+        }
+
+        time += intervalMs;
+
+        const seconds = Math.floor(time / 1000) % 60;
+        const minutes = Math.floor(time / 60000);
+
+        const strSeconds = `00${seconds}`.slice(-2);
+        const strMinutes = `00${minutes}`.slice(-2);
+
+        document.getElementById("pTime").textContent = `${strMinutes}:${strSeconds}`;
+
+        countTimer = setTimeout(loop, intervalMs);
+      }
+
+      countTimer = setTimeout(loop, intervalMs);
+    }
+
+    function stopCounting() {
+      if (countTimer !== null) {
+        clearTimeout(countTimer);
+        countTimer = null;
+      }
+    }
+
+    function drawFirstFrame() {
+      drawGrid();
+      drawFruit();
+      drawSnake();
+      showPoints();
+      drawStartScreen();
+    }
+
+    function startMoving() {
+      if (paused) {
+        drawPaused();
+        return;
+      }
+
+      if (perdeu)
+        return;
+
+      moving = true;
+      moveSnake();
+
+      drawGrid();
+      drawSnake();
+
+      if (venceu)
+      {
+        drawWin();
+        return;
+      }
+
+      drawFruit();
+
+      alreadyCommanded = false;
+
+      showPoints();
+
+      if (restart) {
+        moving = false;
+        startGame();
+        return;
+      }
+
+      if (collisionCount >= Math.ceil(3*intervalDif[1] / intervalDif[dif - 1])) {
+        moving = false;
+        perdeu = true;
+
+        const maxScore = localStorage.getItem("maxScore");
+        if (maxScore < snake.length - minLength)
+          localStorage.setItem("maxScore", snake.length - minLength);
+        drawGameOver();
+        return;
+      }
+      setTimeout(startMoving, interval);
+    }
+
+    async function ensureFontLoaded() {
+      await document.fonts.load('400 54px "Bytesized"');
+      await document.fonts.ready;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        await ensureFontLoaded();
+      } catch (e) {
+        console.warn('Fonte não carregou', e);
+      }
+      drawFirstFrame();
+    });
+
+    window.addEventListener('contextmenu', e => e.preventDefault());
+  </script>
+</body>
+
+</html>
