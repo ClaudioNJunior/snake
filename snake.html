@@ -9,6 +9,11 @@
   <meta name="author" content="Claudio Junior">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#c0cc00">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Snake">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <script src="./pwa.js" defer></script>
   <link rel="canonical" href="https://snake.nastasi.dev/">
 
   <meta property="og:title" content="Snake Game | nastasi.dev">
@@ -53,11 +58,14 @@
   }
 }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bytesized&display=swap" rel="stylesheet">
-
   <style>
+    @font-face {
+      font-family: "Bytesized";
+      src: url("./assets/bytesized-regular.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
     * {
       box-sizing: border-box;
       font-family: "Bytesized", sans-serif;
@@ -1351,6 +1359,10 @@
 
     syncControls();
     resizeCanvasDisplay();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && isPlaying()) togglePause();
+    });
 
     window.addEventListener('contextmenu', e => e.preventDefault());
   </script>
